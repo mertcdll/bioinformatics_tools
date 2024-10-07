@@ -1,0 +1,742 @@
+---
+title: "RNASeq Differential Expression Analysis Report"
+author: "Genoks"
+output: 
+  html_document: default
+params:
+  
+  cutoff_p: "0.05"
+  cutoff_lfc: "1.2"
+  interaction: "True"
+  sample_info_file: "/home/dell/Documents/10.RNASEQ/DifferentialExp/samplernaseqdata/sample_info.txt"
+  data_source: "ncbi"
+  show_code: FALSE
+  output_dir: "Output/"
+---
+
+```{r setup, include = FALSE}
+
+knitr::opts_chunk$set(
+  echo = as.logical(params$show_code),
+  message = FALSE,
+  warning = FALSE,
+  results = "asis"
+)
+
+```
+
+
+```{r}
+suppressPackageStartupMessages(library(edgeR))
+suppressPackageStartupMessages(library(org.Hs.eg.db))
+suppressPackageStartupMessages(library(GO.db)) 
+suppressPackageStartupMessages(library(topGO))
+suppressPackageStartupMessages(library(argparse))
+suppressPackageStartupMessages(library(dplyr))
+suppressPackageStartupMessages(library(pheatmap))
+suppressPackageStartupMessages(library(EnhancedVolcano))
+suppressPackageStartupMessages(library(ggplot2))
+suppressPackageStartupMessages(library(kableExtra))
+suppressPackageStartupMessages(library(knitr))
+suppressPackageStartupMessages(library(gridBase))
+suppressPackageStartupMessages(library(gridExtra))
+suppressPackageStartupMessages(library(grid))
+
+```
+
+
+# General information about the expression data
+
+This section provides an introduction to the dataset used for RNASeq differential expression analysis. It begins by loading the raw count data, which typically includes information about gene expression levels across samples. The data is structured with rows representing genes and columns representing individual samples. Key steps in this section include extracting sample names, defining factors that categorize the samples (e.g., treatment groups), and converting data types as needed. Additionally, this section includes a preview of the raw unfiltered count data in a tabular format.
+
+
+```{r}
+cutoff_p <- as.double(params$cutoff_p)
+cutoff_lfc <- as.double(params$cutoff_lfc)
+interaction <- params$interaction
+data_source <- params$data_source
+sample_info <- read.table(params$sample_info_file, header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+sample_names <- sample_info$names # sample names 
+count_dirs <- sample_info$count_dirs # count directories
+factors <- sample_info[, !names(sample_info) %in% c("names", "subject", "count_dirs")]
+rownames(factors) <- sample_names
+subjects <- sample_info$subject #subjects
+factor_names <- names(factors) #factor names
+factor_count <- length(factor_names) #number of factors
+
+exp_dict <- {}
+
+# Create raw counts dictionary 
+for (i in 1:length(sample_names)) {
+  count_table <- read.table(count_dirs[i], header = TRUE, row.names = 1, sep = "\t")
+  exp_dict[[sample_names[i]]] <- count_table
+}
+
+# Convert it to table 
+exp_table <- data.frame(exp_dict)
+
+
+# Convert floats to integers 
+for (col in names(exp_table)) {   
+  if (is.numeric(exp_table[[col]])) {
+    exp_table[[col]] <- as.integer(exp_table[[col]])
+  }
+} 
+
+rows <- seq(1,nrow(head(exp_table)))
+odd_rows <- rows[rows %%2 == 1]
+
+head(exp_table)  %>% 
+  kbl(caption="Table 1: Raw unfiltered counts table") %>%
+  kable_styling(bootstrap_options = "striped", full_width = F)  %>%
+  row_spec(row  = odd_rows, background = "orange")
+```
+
+
+## Filtering and Normalization
+
+
+In this part, data preprocessing steps are performed to prepare the raw count data for downstream analysis. The first step involves converting the factors related to sample attributes (e.g., treatment groups) into a suitable format for analysis. Afterward, data filtering is carried out to remove genes with low expression levels, as these may not contribute meaningfully to the analysis. Normalization is then applied to account for differences in library sizes between samples. Common normalization methods, such as TMM (trimmed mean of M values), are employed. The final result is a filtered and normalized count dataset, which is displayed in a tabular format.
+
+
+```{r}
+factors <- data.frame(lapply(factors, as.factor)) #converts all columns to factors
+grp <- as.factor(do.call(paste, c(factors, sep="_"))) #takes factor combinations. (if exist)
+
+
+for (col_name in names(factors)) {
+  factor_object <- factors[[col_name]] 
+  assign(col_name, factor_object)  
+}
+
+
+
+# Get entrez ids # do not change
+if (params$data_source == "ncbi") { 
+  keytype <- "SYMBOL"
+} else if (data_source == "ensembl") { 
+  keytype <- "ENSEMBL"
+  rownames(exp_table) <- sub("\\.\\d+$", "", rownames(exp_table))
+} else {
+  stop("Invalid data_source. Use 'ncbi' or 'ensembl'")
+}
+
+# Check if the specified keytype is valid # do not change
+valid_keys <- keys(org.Hs.eg.db, keytype = keytype)
+if (is.null(valid_keys)) {
+  stop(paste("Invalid keytype:", keytype))
+}
+
+tryCatch({
+  entrez_ids <- mapIds(org.Hs.eg.db,
+                       keys = row.names(exp_table),
+                       keytype = keytype,
+                       column = "ENTREZID")
+}, error = function(e) {
+  stop("Error while mapping IDs: ", conditionMessage(e))
+})
+
+# Remove duplicates # do not change
+symbol_id  <- data.frame(SYMBOL = names(entrez_ids), ENTREZID = as.character(entrez_ids), stringsAsFactors = FALSE)
+
+symbol_id <- symbol_id[!duplicated(symbol_id$SYMBOL),]  
+
+# Create dgelist object 
+y <- DGEList(exp_table, genes = symbol_id, group = grp)
+
+# Filter by expression (Remove genes having low counts)
+keep <- filterByExpr(y)
+yfiltered <- y[keep, , keep.lib.sizes=FALSE]
+
+rows <- seq(1,nrow(head(yfiltered$counts)))
+odd_rows <- rows[rows %%2 == 1]
+
+head(yfiltered$counts)  %>% 
+  kbl(caption="Table 2: Raw filtered counts table") %>%
+  kable_styling(bootstrap_options = "striped", full_width = F) %>%
+  row_spec(row  = odd_rows, background = "orange")
+```
+
+
+```{r}
+yfiltered <- calcNormFactors(yfiltered, method = "TMM")
+samples_table <- yfiltered$samples
+colnames(samples_table) <- c("Group", "Library Size", "Normalization factors")
+
+rows <- seq(1,nrow(head(samples_table)))
+odd_rows <- rows[rows %%2 == 1]
+
+
+samples_table %>% 
+  kbl(caption="Table 3: Samples table")%>%
+  kable_styling(bootstrap_options = "striped", full_width = F) %>%
+  row_spec(row  = odd_rows, background = "orange") 
+```
+
+## Data Exploration
+
+Data exploration aims to gain insights into the characteristics and distribution of the dataset. This section typically begins by visualizing the data using plots and graphs. Common visualization techniques include multidimensional scaling (MDS)/Principle Components Analysis (PCA) plots, which help assess the overall structure of the data and detect potential clustering of samples. Mean-difference (MD) plots are another common visualization tool that provides information on the distribution of gene expression values. These exploratory plots aid in understanding the data's variability and can identify potential sources of variation.
+
+```{r, fig.align='center', fig.width=10, fig.height=10}
+layout_matrix <- matrix(1:length(sample_names), ncol = 2)
+layout(layout_matrix)
+invisible(sapply(1:length(sample_names), function(i) {
+  plotMD(cpm(yfiltered, log=TRUE), column = i,  
+         xlab = "Log CPM", ylab = "Log-fold-change") 
+  abline(h=0, col="orange", lty=2, lwd=2)
+}))
+```
+
+
+```{r, fig.align='center'}
+  points <- seq(1,length(levels(grp)))
+  colors <- seq(1,length(levels(grp)))
+  plotMDS(yfiltered, col=colors[grp], pch=points[grp])
+  legend("top", legend=levels(grp), pch=points, col=colors, ncol=2)
+  title(main = "PCA plot", cex.main = 1.2, cex.sub = 1) 
+```
+
+## Dispersion plots
+
+Dispersion plots are used to investigate the dispersion or variability of gene expression across samples or conditions. This section may include both single-factor and multifactor dispersion plots, depending on the experimental design. Dispersion plots are useful for identifying genes with varying levels of expression across different factors or conditions. They provide insights into the statistical properties of the data and can help assess the appropriateness of modeling assumptions.
+
+
+```{r, fig.align='center', fig.width=10, fig.height=5}
+layout_matrix <- matrix(1:2, ncol = 2)
+layout(layout_matrix)
+if (factor_count == 1) {
+  single_design <- model.matrix(~ 0 + grp)
+  colnames(single_design) <- levels(grp)
+  yfiltered <- estimateDisp(yfiltered, single_design, robust = TRUE)
+  plotBCV(yfiltered)
+  
+  single_fit <- glmQLFit(yfiltered, single_design, robust = TRUE)
+  plotQLDisp(single_fit)
+
+}  
+```
+
+
+```{r, fig.align='center', fig.width=10, fig.height=5}
+layout_matrix <- matrix(1:2, ncol = 2)
+layout(layout_matrix)
+if (factor_count > 1 ) {
+  if (interaction == "True") {
+    formula <- as.formula(paste("~", paste(names(factors), collapse = "*")))
+  } else {
+    formula <- as.formula(paste("~", paste(names(factors), collapse = "+")))
+  }
+  
+  
+  multi_design <- model.matrix(formula)
+  rownames(multi_design) <- colnames(yfiltered)
+  yfiltered_multi <- estimateDisp(yfiltered, multi_design)
+  
+  plotBCV(yfiltered_multi)
+  title("Dispersion plot")
+    
+  multi_fit <- glmQLFit(yfiltered_multi, multi_design, robust = TRUE)
+
+  plotQLDisp(multi_fit)
+  title("Fitted mean QL dispersion plot")
+}  
+```
+
+# Differential Expression
+
+Differential expression analysis is a critical step in RNASeq data analysis. This section is dedicated to identifying genes that exhibit significant changes in expression between different experimental conditions or factors. The analysis often involves specifying contrasts of interest, such as treatment versus control groups, and calculating statistical significance using methods like likelihood ratio tests. Result tables are generated to list the significant genes, including their fold changes, p-values, and adjusted p-values (e.g., FDR-corrected p-values). These tables provide a basis for further investigation and interpretation of the biological implications of gene expression changes.
+
+## Results
+
+### Result tables for factor combinations
+
+```{r, fig.align='center'}
+contrast_combinations <- combn(levels(grp), 2, simplify = FALSE)
+
+if (factor_count > 1) {
+  single_design <- model.matrix(~ 0 + grp)
+  yfiltered <- estimateDisp(yfiltered, single_design, robust = TRUE)
+  single_fit <- glmQLFit(yfiltered, single_design, robust = TRUE)
+  colnames(single_design) <- levels(grp)
+}
+
+table_number <- 4
+
+
+for (combo in contrast_combinations) {
+  treatment1 <- combo[1]
+  treatment2 <- combo[2]
+  
+  contrast_name <- paste(treatment1, "-", treatment2, sep = "")
+  
+  cmd <- paste("con <- makeContrasts(", contrast_name, ", levels=single_design)", sep ='"')
+  eval(parse(text = cmd))
+  
+  tr <- glmTreat(single_fit, contrast = con, lfc = log2(cutoff_lfc))
+  
+  top_tags_tr <- topTags(tr, n = nrow(tr$table))
+  
+  pattern <- "grp(\\w+)"
+
+  matches <- regmatches(top_tags_tr$comparison, gregexpr(pattern, top_tags_tr$comparison))
+
+  grp1 <- sub("grp", "", matches[[1]][1]) 
+  grp2 <- sub("grp", "", matches[[1]][2])  
+
+  table <- head(top_tags_tr$table[, !names(top_tags_tr$table) %in% c("SYMBOL", "ENTREZID")], n = 10)
+  
+  rows <- seq(1,nrow(table))
+  odd_rows <- rows[rows %%2 == 1]
+
+  table_kable <- kable(table, caption = paste("Table", table_number, ": Comparison between", grp1, "and",    grp2,     sep = " "), format = "html") %>%
+  kable_styling(bootstrap_options = "striped", full_width = FALSE) %>%
+  row_spec(row = odd_rows, background = "orange")
+  
+  cat(table_kable)
+  
+  table_number <- table_number + 1
+  
+}
+
+```
+
+### Result tables for factors
+
+```{r, fig.align='center'}
+
+col_multi <- colnames(multi_design)
+  
+  
+if (factor_count > 1) {
+  for (i in 2:length(colnames(multi_design))){
+    
+    
+  tr <- glmTreat(multi_fit, coef = i, lfc = log(cutoff_lfc))
+  
+  top_tags_tr <- topTags(tr, n = nrow(tr$table))
+
+  table <- head(top_tags_tr$table[, !names(top_tags_tr$table) %in% c("SYMBOL", "ENTREZID")], n = 10)
+  
+  rows <- seq(1,nrow(table))
+  odd_rows <- rows[rows %%2 == 1]
+
+  table_kable <- kable(table, caption = paste("Table", table_number, ": Effect of ", col_multi[i]) ,format = "html") %>%
+  kable_styling(bootstrap_options = "striped", full_width = FALSE) %>%
+  row_spec(row = odd_rows, background = "orange")
+  
+  cat(table_kable)
+  
+  table_number = table_number +1
+  
+  }
+
+  
+}
+
+```
+
+### Summary tables for each factor combination
+
+```{r, fig.align='center'}
+
+df <- data.frame()
+
+for (combo in contrast_combinations) {
+  treatment1 <- combo[1]
+  treatment2 <- combo[2]
+  
+  contrast_name <- paste(treatment1, "-", treatment2, sep = "")
+  
+  cmd <- paste("con <- makeContrasts(", contrast_name, ", levels=single_design)", sep ='"')
+  eval(parse(text = cmd))
+  
+  tr <- glmTreat(single_fit, contrast = con, lfc = log2(cutoff_lfc))
+  
+  top_tags_tr <- topTags(tr, n = nrow(tr$table))
+  
+  pattern <- "grp(\\w+)"
+
+  matches <- regmatches(top_tags_tr$comparison, gregexpr(pattern, top_tags_tr$comparison))
+
+  grp1 <- sub("grp", "", matches[[1]][1]) 
+  grp2 <- sub("grp", "", matches[[1]][2])  
+
+  summary_table <- summary(decideTests(tr, p.value = cutoff_p))
+  colnames(summary_table) <- paste(grp1, grp2, sep = "-")
+  
+  if (ncol(df) == 0) {
+    df <- summary_table
+  } else {
+    df <- cbind(df, summary_table)
+  }
+}
+
+
+rows <- seq(1,nrow(df))
+odd_rows <- rows[rows %%2 == 1]
+
+table_kable_sum <- kable(df, caption = paste("Table", table_number, ": Number of upregulated and downregulated genes for each factor comparison"),format = "html") %>%
+kable_styling(bootstrap_options = "striped", full_width = FALSE) %>%
+row_spec(row = odd_rows, background = "orange")
+  
+table_kable_sum
+table_number <-  table_number +1
+```
+
+### Summary Tables for Each factor
+
+```{r, fig.align='center'}
+
+df <- data.frame()
+
+col_multi <- colnames(multi_design)
+  
+if (factor_count > 1) {
+  for (i in 2:length(colnames(multi_design))){
+    
+    
+  tr <- glmTreat(multi_fit, coef = i, lfc = log(cutoff_lfc))
+  
+  top_tags_tr <- topTags(tr, n = nrow(tr$table))
+
+  summary_table <- summary(decideTests(tr, p.value = cutoff_p))
+  colnames(summary_table) <- col_multi[i]
+  
+  if (ncol(df) == 0) {
+    df <- summary_table
+  } else {
+    df <- cbind(df, summary_table)
+  }  
+  
+}
+
+rows <- seq(1,nrow(df))
+odd_rows <- rows[rows %%2 == 1]
+
+table_kable_sum <- kable(df, caption = paste("Table", table_number, ": Number of upregulated and downregulated genes for each factor"),format = "html") %>%
+kable_styling(bootstrap_options = "striped", full_width = FALSE) %>%
+row_spec(row = odd_rows, background = "orange")
+  
+cat(table_kable_sum)
+table_number <-  table_number +1 
+
+}
+
+```
+
+## Logarihtmic fold change plots
+
+Logarithmic fold change plots are a visualization tool used to represent the magnitude of gene expression changes between conditions. This section typically includes a series of plots, each depicting the log-fold change versus the Average counts per million (CPM) for a specific contrast or factor. Genes with substantial fold changes and high statistical significance are highlighted, making it easier to identify biologically relevant candidates.
+
+### Plots for factor combinations
+
+```{r, fig.align='center', fig.height=10}
+
+if (length(contrast_combinations)%%2 == 0) {
+  layout_matrix <- matrix(1:length(contrast_combinations), ncol = 2, byrow = TRUE)
+}else {
+  layout_matrix <- matrix(1:(length(contrast_combinations) +1) , ncol=2, byrow=TRUE)
+}
+
+layout(layout_matrix)
+
+for (combo in contrast_combinations) {
+  treatment1 <- combo[1]
+  treatment2 <- combo[2]
+  
+  contrast_name <- paste(treatment1, "-", treatment2, sep = "")
+  
+  cmd <- paste("con <- makeContrasts(", contrast_name, ", levels=single_design)", sep ='"')
+  eval(parse(text = cmd))
+  
+  tr <- glmTreat(single_fit, contrast = con, lfc = log2(cutoff_lfc))
+  
+  pattern <- "grp(\\w+)"
+
+  matches <- regmatches(tr$comparison, gregexpr(pattern, tr$comparison))
+
+  grp1 <- sub("grp", "", matches[[1]][1]) 
+  grp2 <- sub("grp", "", matches[[1]][2])  
+  
+  plotMD(tr, main = paste(grp1, grp2, sep = "-"))
+  abline(h=c(-cutoff_lfc, cutoff_lfc), col = "blue")
+  
+}
+
+```
+
+### Plots for factors
+
+```{r, fig.align='center', fig.height=10}
+col_multi <- colnames(multi_design)
+
+if (length(col_multi)%%2 == 0) {
+  layout_matrix <- matrix(1:length(col_multi), ncol = 2, byrow = TRUE)
+}else {
+  layout_matrix <- matrix(1: (length(col_multi) +1) , ncol=2, byrow = TRUE)
+}
+
+layout(layout_matrix)
+
+col_multi <- colnames(multi_design)
+  
+if (factor_count > 1) {
+  for (i in 2:length(colnames(multi_design))){
+    
+    
+  tr <- glmTreat(multi_fit, coef = i, lfc = log(cutoff_lfc))
+  
+  plotMD(tr)
+  abline(h=c(-cutoff_lfc, cutoff_lfc), col = "blue")
+}
+}
+```
+
+## Heatmaps
+
+Heatmaps are employed to visualize gene expression patterns across different samples or conditions. This section often includes heatmaps generated for specific sets of genes, such as those identified as differentially expressed in previous sections. Heatmaps use color gradients to represent expression levels, allowing us to identify clusters of genes with similar expression patterns. Annotations may also be added to the heatmap to provide additional context, such as sample information or experimental conditions.
+
+### Heatmaps for factor combinations
+
+```{r, fig.align='center', fig.height=15, fig.width= 10}
+
+heatmap_list = list()
+
+for (combo in contrast_combinations) {
+  treatment1 <- combo[1]
+  treatment2 <- combo[2]
+  
+  contrast_name <- paste(treatment1, "-", treatment2, sep = "")
+  
+  cmd <- paste("con <- makeContrasts(", contrast_name, ", levels=single_design)", sep ='"')
+  eval(parse(text = cmd))
+  
+  tr <- glmTreat(single_fit, contrast = con, lfc = log2(cutoff_lfc))
+  top_tags_tr <- topTags(tr, n = nrow(tr$table))
+  
+  most_de_genes = rownames(topTags(tr, n= 20))
+  an_df <- data.frame(treatments = grp[grp%in%combo])
+  row.names(an_df) <- row.names(yfiltered$samples[which(grp %in% grp[grp %in% combo]),])
+  
+  hmap <- pheatmap(cpm(yfiltered, log = TRUE)[most_de_genes,which(grp %in% grp[grp %in% combo])], cluster_rows=FALSE, show_rownames=TRUE, cluster_cols=FALSE, annotation_col=an_df, silent = TRUE)
+  
+  heatmap_list[[length(heatmap_list) +1]] <- hmap$gtable
+}
+
+gridExtra::grid.arrange(grobs = heatmap_list, ncol = 2, top = "Heatmaps")
+```
+
+### Heatmaps for factors
+
+```{r, fig.align='center', fig.height=5, fig.width= 10}
+
+heatmap_list = list()
+
+if (factor_count >1){
+  for (i in 2:length(colnames(multi_design))) {
+  
+    tr <- glmTreat(multi_fit, coef = i, lfc = log(cutoff_lfc))
+    top_tags_tr <- topTags(tr, n = nrow(tr$table))
+  
+    most_de_genes = rownames(topTags(tr, n= 20))
+    
+    if (interaction == "True") {
+      if (i < length(colnames(multi_design))) {
+        tryCatch({
+          an_df <- data.frame(treatments = factors[, i - 1])
+        }, error = function(e) {
+          cat("Error occurred in creating annotation df", i, ":", conditionMessage(e), "\n")
+        })    
+        
+        row.names(an_df) <- row.names(yfiltered$samples)
+
+        tryCatch({
+
+          hmap <- pheatmap(cpm(yfiltered, log = TRUE)[most_de_genes, ], cluster_rows = FALSE, show_rownames = TRUE,
+                   cluster_cols = FALSE, annotation_col = an_df, silent = TRUE)
+          heatmap_list[[length(heatmap_list) +1]] <- hmap$gtable
+          
+        }, error = function(e) {
+          cat("Error occurred in plotting for iteration", i, ":", conditionMessage(e), "\n")
+        })
+        
+      }
+    } else {
+      tryCatch({
+        an_df <- data.frame(treatments = factors[, i - 1])
+      }, error = function(e) {
+        cat("Error occurred in creating annotation df", i, ":", conditionMessage(e), "\n")
+      })    
+      
+      row.names(an_df) <- row.names(yfiltered$samples)
+
+      tryCatch({
+
+        hmap <- pheatmap(cpm(yfiltered, log = TRUE)[most_de_genes, ], cluster_rows = FALSE, show_rownames = TRUE,
+                 cluster_cols = FALSE, annotation_col = an_df, silent = TRUE)
+        heatmap_list[[length(heatmap_list) +1]] <- hmap$gtable
+      }, error = function(e) {
+        cat("Error occurred in plotting for iteration", i, ":", conditionMessage(e), "\n")
+      })
+      
+    }
+  }
+}
+
+
+gridExtra::grid.arrange(grobs = heatmap_list, ncol = 2, top = "Heatmaps")
+```
+
+## Volcano plots
+
+Volcano plots are a graphical tool used to visualize the relationship between gene significance and fold change. This section typically contains multiple volcano plots, each corresponding to a specific contrast or factor of interest. In these plots, genes are scattered based on their log-fold change and statistical significance (e.g., -log10 p-value). Genes that are both highly significant and exhibit substantial fold changes are visually emphasized, aiding in the identification of biologically relevant candidates.
+
+### Volcano plots for factor combinations
+
+```{r, fig.align='center', fig.height=20, fig.width= 10}
+
+volcano_list = list()
+
+for (combo in contrast_combinations) {
+  treatment1 <- combo[1]
+  treatment2 <- combo[2]
+  
+  contrast_name <- paste(treatment1, "-", treatment2, sep = "")
+  
+  cmd <- paste("con <- makeContrasts(", contrast_name, ", levels=single_design)", sep ='"')
+  eval(parse(text = cmd))
+  
+  tr <- glmTreat(single_fit, contrast = con, lfc = log2(cutoff_lfc))
+  top_tags_tr <- topTags(tr, n = nrow(tr$table))
+  
+  pattern <- "grp(\\w+)"
+
+  matches <- regmatches(tr$comparison, gregexpr(pattern, tr$comparison))
+
+  grp1 <- sub("grp", "", matches[[1]][1]) 
+  grp2 <- sub("grp", "", matches[[1]][2])  
+  
+  volcano_data <- data.frame(log2FoldChange = top_tags_tr$table$logFC, pvalue_adj = top_tags_tr$table$FDR)
+
+  volcano_plot <- EnhancedVolcano(volcano_data, lab=row.names(top_tags_tr$table), x="log2FoldChange", y="pvalue_adj", pCutoff = cutoff_p, FCcutoff = cutoff_lfc, pointSize = 3, title = paste(grp1, grp2, sep = "-"))
+  
+    volcano_list[[length(volcano_list) +1]] <- volcano_plot
+
+  
+}
+
+gridExtra::grid.arrange(grobs = volcano_list, ncol = 2, top = "Volcano Plots")
+```
+
+### Volcano plots for factors
+
+
+```{r, fig.align='center', fig.height=15, fig.width= 10}
+
+col_multi <- colnames(multi_design)
+
+volcano_list = list()
+
+if (factor_count >1) {
+  for (i in 2:length(colnames(multi_design))) {
+  
+  tr <- glmTreat(multi_fit, coef = i, lfc = log(cutoff_lfc))
+  top_tags_tr <- topTags(tr, n = nrow(tr$table))
+  
+  
+  volcano_data <- data.frame(log2FoldChange = top_tags_tr$table$logFC, pvalue_adj = top_tags_tr$table$FDR)
+
+  volcano_plot <- EnhancedVolcano(volcano_data, lab=row.names(top_tags_tr$table), x="log2FoldChange", y="pvalue_adj", pCutoff = cutoff_p, FCcutoff = cutoff_lfc, pointSize = 3, title = col_multi[i])
+  
+    volcano_list[[length(volcano_list) +1]] <- volcano_plot
+
+  
+}
+  
+}
+
+gridExtra::grid.arrange(grobs = volcano_list, ncol = 2, top = "Volcano Plots")
+```
+
+## Gene Ontology Analysis
+
+Gene ontology analysis is performed to gain insights into the biological functions associated with differentially expressed genes. This section may include separate analyses for factor combinations and individual factors. Gene ontology terms related to biological processes, molecular functions, and cellular components are assessed for enrichment. Result tables present the enriched terms, associated p-values, and other relevant information, helping us understand the biological implications of their findings.
+
+### Gene Ontology Analysis for Factor Combinations
+
+```{r, fig.align='center', fig.height=20, fig.width= 10}
+
+
+for (combo in contrast_combinations) {
+  treatment1 <- combo[1]
+  treatment2 <- combo[2]
+  
+  contrast_name <- paste(treatment1, "-", treatment2, sep = "")
+  
+  cmd <- paste("con <- makeContrasts(", contrast_name, ", levels=single_design)", sep ='"')
+  eval(parse(text = cmd))
+  
+  tr <- glmTreat(single_fit, contrast = con, lfc = log2(cutoff_lfc))
+  top_tags_tr <- topTags(tr, n = nrow(tr$table))
+  
+  pattern <- "grp(\\w+)"
+
+  matches <- regmatches(tr$comparison, gregexpr(pattern, tr$comparison))
+
+  grp1 <- sub("grp", "", matches[[1]][1]) 
+  grp2 <- sub("grp", "", matches[[1]][2])  
+  
+  go <- goana(tr, species ="Hs", geneid = tr$genes$ENTREZID, FDR = cutoff_p)
+  godata <- topGO(go, n=20, truncate=30)
+  
+  if (nrow(godata) != 0) {
+    rows <- seq(1,nrow(godata))
+    odd_rows <- rows[rows %%2 == 1]
+
+    table_kable_sum <- kable(godata, caption = paste("Table", table_number, ": Gene ontology analysis for ", grp1,"-", grp2),format = "html") %>%
+    kable_styling(bootstrap_options = "basic", full_width = FALSE) %>%
+  row_spec(row = odd_rows, background = "orange")
+  
+    cat(table_kable_sum)
+    table_number <-  table_number +1 
+
+  }
+  
+}
+
+```
+
+### Gene Ontology Analysis for factors
+
+```{r, fig.align='center', fig.height=20, fig.width= 10}
+
+col_multi <- colnames(multi_design)
+
+if (factor_count > 1) {
+  for (i in 2:length(colnames(multi_design))){
+
+  
+  tr <- glmTreat(multi_fit, coef = i, lfc = log2(cutoff_lfc))
+  
+  go <- goana(tr, species ="Hs", geneid = tr$genes$ENTREZID, FDR = cutoff_p)
+  godata <- topGO(go, n=20, truncate=30)
+  
+  if (nrow(godata) != 0) {
+    rows <- seq(1,nrow(godata))
+    odd_rows <- rows[rows %%2 == 1]
+
+    table_kable_sum <- kable(godata, caption = paste("Table", table_number, ": Gene ontology analysis for ", col_multi[i]),format = "html") %>%
+    kable_styling(bootstrap_options = "striped", full_width = FALSE) %>%
+  row_spec(row = odd_rows, background = "orange")
+  
+    cat(table_kable_sum)
+    table_number <-  table_number +1 
+
+  }  
+ }
+}
+
+```
+
+
+

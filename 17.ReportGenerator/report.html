@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ilyome Report</title>
+  <link rel="stylesheet" href="/home/dell/Documents/IlyomeReport/style.A4.css">
+</head>
+<body>
+  <header>
+    <div class="headerSection">
+      <div class="logoAndName">
+        <div>
+          <img src="https://app.ilyome.com/assets/images/logo-light.png" alt="Logo" alt height="60">
+        </div>
+      </div>
+      <div class = "logo2">
+        <img src="https://www.genoks.com.tr/wp-content/uploads/2022/06/genoks-logo.png" alt="logo" alt height="60">   
+      </div>
+      <div class="companyinfo">
+        <p>
+          <b>Ilyome Bioinformatics</b>  
+        </p>
+        <p>Website:
+          <a href="https://www.ilyome.com/">
+            www.ilyome.com
+          </a>
+        </p> 
+        <div class="teladdress">
+          <p>Address: Gazi mh, Silahtar Cd. No:67, 06560 <br/>Yenimahalle/Ankara</p>
+        </div>
+        <div class="teladdress">
+          <p>Tel: 444 8 732 </p>
+        </div>
+        </p> 
+      </div> 
+    </div>
+    <hr/>
+    <div class="headerSection">
+      <div class="issuedTo">
+        <h1>Sample Information</h1>
+      </div>
+      <div class = "patient-info">
+        <p>
+          <b>Patient Name:</b> Göksu Çakır <!--here should be interactive-->
+          <br />
+          <b>Gender:</b> Male <!--here should be interactive-->
+          <br />
+          <b>Date of Birth:</b> 01/01/1000 <!--here should be interactive-->
+          <br />
+          <b>Sample Type:</b> Saliva <!--here should be interactive-->
+          <br />
+          <b>Sample ID:</b> 88-EC-49 <!--here should be interactive-->
+        </p>
+      </div>
+      <div class = "dates">
+        <p>
+          <b>Referring Physician:</b> Hekim Hekimoğlu <!--here should be interactive-->
+          <br />
+          <b>Report Date:</b> 01/01/2023 <!--here should be interactive-->
+          <br />
+          <b>Reception Date:</b> 01/01/2023 <!--here should be interactive-->
+          <br />  
+          <b>Order Number:</b> 000000001 <!--here should be interactive-->
+        </p>
+      </div>
+    </div>
+  </header>  
+  <main>
+      <div class="TestPerformed">
+        <div class="Key">
+          <p>
+            <b>Tests Performed</b> 
+          </p> 
+        </div>
+        <div class="Value">
+          <p>Test Names here</p> <!--here should be interactive-->
+        </div>
+      </div>
+      <div class="Indication">
+        <div class="Key">
+          <p>
+            <b>Indication for Test</b> 
+          </p> 
+        </div>
+        <div class="Value">
+          <p>Indications here</p> <!--here should be interactive-->
+        </div>
+      </div>
+      <div class="Result">
+        <div class="Key">
+          <p>
+            <b>Result</b>
+          </p> 
+        </div>
+        <div class="Value">
+          <p class="ResultFont">Positive or Negative</p> <!--here should be interactive-->
+          <p class="ResultDesc">Established cause(s) of reported phenotype was identified (or not)</p> <!--here should be interactive-->
+        </div>
+      </div>
+      <div class="Variants">
+        <div class="Key">
+          <p>
+            <b>Variants</b>
+          </p> 
+        </div>
+        <div class="Value">
+          <table>
+            <thead>
+              <tr>
+                <th>Gene/Transcript ID</th>
+                <th>Variant</th>
+                <th>Chromosome Position</th>
+                <th>Zygosity</th>
+                <th>Variant Classification</th>
+                <th>Related Phenotypes</th>
+              </tr>
+            </thead>
+            <tbody> <!--tbody should be interactive, there can be multiple rows-->
+              <tr>
+                <td class="genenames"> <!--here should be interactive-->
+                  <p>CEP120</p>
+                  <p>ENST00000306467</p>
+                  <p>NM_001375405.1</p>
+                </td>
+                <td> <!--here should be interactive-->
+                  c.2530_2548del</br>
+                  p.Tyr844GlufsTer3</br>
+                  </td>
+                <td> <!--here should be interactive-->
+                  chr5:123364527:CGTCCCC...:C	</br>
+                </td>
+                <td> <!--here should be interactive-->
+                  HET</br>
+                </td>
+                <td class="variantclass"> <!--here should be interactive-->
+                  <p>Pathogenic</p>
+                </td>
+                <td class="phenotypes"> <!--here should be interactive (there can be more than 1 phenotypes)-->
+                  <p>Short-rib thoracic dysplasia 13 with or without polydactyly AR</p>
+                  <p>Joubert syndrome 31 AR</p>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="Interpretations">
+        <div class="Key">
+          <p>
+            <b>Interpretations</b>
+          </p> 
+        </div>
+        <div class="Value">
+          <p>Interpretations here</p> <!--here should be interactive-->
+        </div>
+      </div> 
+      <div class="Comments">
+        <div class="Key">
+          <p>
+            <b>Comments<br>&Suggestions</b> 
+          </p> 
+        </div>
+        <div class="Value">
+          <p>Comments& Suggestions here</p> <!--here should be interactive-->
+        </div>
+      </div>
+      <div class="pagebreak"></div>
+      <div class="Metrics">
+        <div class="Key">
+          <p>
+            <b>Metrics</b>
+          </p> 
+        </div>
+        <div class="Value">
+          <table class="metricstable">
+            <thead>
+              <tr>
+                <th>Metric</th>
+                <th>Definition</th>
+                <th>Importance</th>
+                <th>Value</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="metricname">Aligned Bases</td>
+                <td class="metricdef">The total number of bases in the sequencing data that are successfully aligned to a reference genome</td>
+                <td class="metricdef">Indicates the overall coverage and alignment success of the sequencing experiment</td>
+                <td >8772620671</td>  <!--here should be interactive-->
+              </tr>
+              <tr>
+                <td class="metricname">Aligned Bases in QC Coverage Region</td>
+                <td class="metricdef">The number of aligned bases specifically within regions defined as high-quality coverage regions based on quality control (QC) criteria</td>
+                <td class="metricdef">Focuses on the aligned bases within regions of interest, providing insights into the quality of sequencing in specific genomic areas</td>
+                <td >4596672871</td>  <!--here should be interactive-->
+              </tr>
+              <tr>
+                <td class="metricname">Aligned Reads</td>
+                <td class="metricdef">The total number of sequencing reads that have been successfully aligned to a reference genome</td>
+                <td class="metricdef">Reflects the number of individual sequencing fragments that contribute to the aligned bases, influencing overall coverage and accuracy</td>
+                <td>63180583</td>  <!--here should be interactive-->
+              </tr>
+              <tr>
+                <td class="metricname">Aligned Reads in QC Coverage Region</td>
+                <td class="metricdef">The number of aligned reads that fall within the high-quality coverage regions defined by QC criteria</td>
+                <td class="metricdef">Offers a subset of aligned reads specifically within regions of interest, emphasizing the quality of coverage in critical genomic areas</td>
+                <td>48704954</td>  <!--here should be interactive-->
+              </tr>
+              <tr>
+                <td class="metricname">PCT of QC Coverage Region [20x:Inf&#41</td>
+                <td class="metricdef">The percentage of high-quality coverage region (defined by QC criteria) with sequencing depth greater than or equal to 20 times</td>
+                <td class="metricdef">Indicates the proportion of the genome that has sufficient coverage, often used as a threshold for reliable variant calling</td>
+                <td>97.5%</td>  <!--here should be interactive-->
+              </tr>
+              <tr>
+                <td class="metricname">Average Alignment over QC Coverage Region</td>
+                <td class="metricdef">The average depth of sequencing coverage within the high-quality coverage regions based on QC criteria</td>
+                <td class="metricdef">Provides a measure of how thoroughly the genomic regions of interest are sequenced, influencing the reliability of variant detection</td>
+                <td>125.23</td>  <!--here should be interactive-->
+              </tr>
+              <tr>
+                <td class="metricname">Het/Hom Ratio</td>
+                <td class="metricdef">The ratio of heterozygous (having different alleles) to homozygous (having identical alleles) variants detected in the sequencing data</td>
+                <td class="metricdef">Reflects the genetic diversity within the sample and can be relevant for understanding population genetics or identifying potential disease-related variations</td>
+                <td>1.65</td>  <!--here should be interactive-->
+              </tr> 
+              <tr>
+                <td class="metricname">Ti/Tv Ratio</td>
+                <td class="metricdef">The ratio of transitions (Ti) to transversions (Tv) among the detected single nucleotide variants (SNVs)</td>
+                <td class="metricdef">A quality metric for variant calling, as different types of nucleotide changes have different expected ratios in normal, non-mutated genomic regions</td>
+                <td>2.41</td>  <!--here should be interactive-->
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="metricplots">  <!--here should be interactive-->
+            <p>Aligned bases vs aligned bases in QC coverage region</p>
+            <img src="./metric_basesaligned.png" height="90">
+            <p>Aligned reads vs aligned reads in QC coverage region</p>
+            <img src="./metric_readsmapped.png" height="90">
+            <p>Percentage of QC coverage region with coverage higher than 20x</p>
+            <img src="./metric_pct20xcov.png" height="90">
+            <p>Heterozygous/Homozygous ratio</p>
+            <img src="./metric_hethom.png" height="90">
+            <p>Transition/Transversion ratio</p>
+            <img src="./metric_titv.png" height="90">
+          </div>
+        </div>
+      </div>
+      <div class="pagebreak"></div>   
+      <div class="igvdisplay">
+        <div class="Key">
+          <p>
+            <b>IGV Display</b>
+          </p> 
+        </div>
+        <div class="Value">
+          <p>IGV Display here</p> <!--here should be interactive-->
+        </div>
+      </div>           
+  </main>
+</body>
+</html>
